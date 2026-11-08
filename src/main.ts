@@ -1,18 +1,22 @@
 import { app } from 'electron';
+import { initialize as initializeRemote } from '@electron/remote/main';
 import { ElectronMain } from './egret/code/electron-main/main';
 import { parseArgs } from 'egret/platform/environment/node/argv';
 import { ParsedArgs } from 'egret/platform/environment/common/args';
 
-// macOS: 当拖拽文件到未运行的UI Editor dock图标时，open-file事件将会在ready事件之前触发。
-// 此时记住拖拽的文件，以便应用启动完成打开
+initializeRemote();
+
+// Must be set before app ready
+app.commandLine.appendSwitch('disable-site-isolation-trials');
+app.commandLine.appendSwitch('lang', 'en-US');
+
+// macOS: when dragging a file onto a dock icon while the app is not running,
+// open-file fires before ready. Remember the path so we can open it after startup.
 app.on('open-file', (event: Event, path: string) => {
 	global['macOpenFile'] = path;
 });
 
 app.on('ready', () => {
-	// https://github.com/electron/electron/issues/18214
-	app.commandLine.appendSwitch('disable-site-isolation-trials');
-
 	let args: ParsedArgs;
 	try {
 		args = parseArgs(process.argv);

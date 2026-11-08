@@ -9,7 +9,8 @@ import { ITree, IController, ContextMenuEvent } from 'vs/base/parts/tree/browser
 import { INode } from 'egret/exts/exml-exts/exml/common/exml/treeNodes';
 import { LayerPanelUtil } from 'egret/workbench/parts/layers/components/LayerPanelUtil';
 import { localize } from 'egret/base/localization/nls';
-import { MenuItemConstructorOptions, MenuItem, remote, Menu } from 'electron';
+import { MenuItemConstructorOptions, MenuItem, Menu } from 'electron';
+import * as remote from '@electron/remote';
 
 
 enum ContextMenuId {

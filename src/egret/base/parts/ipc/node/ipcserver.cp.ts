@@ -1,5 +1,5 @@
 import { ChildProcess, fork } from 'child_process';
-import { remote } from 'electron';
+import * as remote from '@electron/remote';
 
 import * as paths from 'path';
 import { localize } from 'egret/base/localization/nls';
@@ -62,7 +62,14 @@ class IPCServer implements IDisposable {
 				callbackInfo.resolve(result);
 			} else if (type == 'error') {
 				const error: any = msg.error;
-				callbackInfo.reject(error);
+				// Node Error objects serialize to {} over IPC — restore a useful message
+				if (error && typeof error === 'object' && !error.message && (error.code || Object.keys(error).length === 0)) {
+					callbackInfo.reject(new Error(error.code
+						? `Child process error (${error.code})`
+						: 'Child process error (empty IPC payload — often ENOENT for properties.json)'));
+				} else {
+					callbackInfo.reject(error);
+				}
 			} else if (type == 'null') {
 				callbackInfo.reject(localize('ipcseriver.cp.message_handler', 'Method {0} was not found in the child process', funcName));
 			}

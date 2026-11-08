@@ -107,23 +107,30 @@ export class EXMLContentAssistProcessor {
 	}
 
 	private initXsd(xsdPath: string): Promise<sax.Tag> {
-		return new Promise<sax.Tag>((c, e) => {
-			fs.readFile(xsdPath, 'utf-8', (err, xsdStr) => {
-				if (err) {
-					console.log(err);
-					c(null);
-				} else {
-					if (!xsdStr) {
-						c(null);
-					} else {
-						let xsdXML: sax.Tag = null;
-						try {
-							xsdXML = xml.parse(xsdStr);
-						} catch (error) { }
-						c(xsdXML);
+		return new Promise<sax.Tag>((c) => {
+			const tryParse = (filePath: string): sax.Tag => {
+				try {
+					if (!filePath || !fs.existsSync(filePath)) {
+						return null;
 					}
+					const xsdStr = fs.readFileSync(filePath, 'utf8');
+					if (!xsdStr) {
+						return null;
+					}
+					return xml.parse(xsdStr, false);
+				} catch (error) {
+					console.error('Failed to parse XSD', filePath, error);
+					return null;
 				}
-			});
+			};
+			let xsdXML = tryParse(xsdPath);
+			if (!xsdXML) {
+				try {
+					const { getBundledEuiSchemaPath } = require('../project/egretSDK');
+					xsdXML = tryParse(getBundledEuiSchemaPath('exml.xsd'));
+				} catch (_e) { /* ignore */ }
+			}
+			c(xsdXML);
 		});
 	}
 

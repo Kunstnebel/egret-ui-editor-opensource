@@ -1,6 +1,6 @@
 {
 	"compilerOptions": {
-		"target": "es2017",
+		"target": "ES2020",
 		"watch": false,
 		"sourceMap": true,
 		"experimentalDecorators": true,
@@ -8,25 +8,26 @@
 		"baseUrl": "./src",
 		"outDir": "./out",
 		"module": "commonjs",
-		// "strict": true,
 		"noImplicitAny": false,
 		"strictNullChecks": false,
 		"noImplicitThis": false,
 		"skipLibCheck": true,
 		"moduleResolution": "node",
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
 		"lib": [
-			"es5",
-			"dom",
-			"es6",
-			"es2015",
-			"es2015.proxy",
-			"ES2018.Promise",
-			"webworker",
-			"scripthost"
+			"ES2020",
+			"DOM",
+			"DOM.Iterable",
+			"WebWorker",
+			"ScriptHost"
 		]
 	},
 	"exclude": [
 		"node_modules",
-		"out"
+		"out",
+		"build",
+		"docs",
+		"euiruntime"
 	]
 }

@@ -17,10 +17,14 @@ function getEntry() {
 	entry['egret/workbench/electron-browser/bootstrap/monaco-editor/monaco-editor'] = './monaco-editor.js';
 	entry['egret/workbench/electron-browser/bootstrap/monaco-editor/editor.worker'] = "monaco-editor/esm/vs/editor/editor.worker.js";
 	entry['egret/workbench/electron-browser/bootstrap/monaco-editor/json.worker'] = "monaco-editor/esm/vs/language/json/json.worker.js";
-	var srcDirName = './src/**/*.node.ts'; //需要获取的文件路径
+	var srcDirName = './src/**/*.node.ts'; // entry files ending with .node.ts
 	glob.sync(srcDirName).forEach(function (name) {
-		var target = name;
-		var source = name.slice(0, name.length - 3);
+		var normalized = name.replace(/\\/g, '/');
+		if (!normalized.startsWith('./')) {
+			normalized = './' + normalized.replace(/^\.\//, '');
+		}
+		var target = normalized;
+		var source = normalized.slice(0, normalized.length - 3);
 		target = '.' + target.slice('./src'.length);
 		source = '.' + source.slice('./src'.length);
 		entry[source] = target;
@@ -39,7 +43,7 @@ module.exports = {
 	target: 'electron-renderer',
 	context: path.join(__dirname, 'src'),
 	resolve: {
-		extensions: ['*', '.js', '.jsx', '.ts', '.tsx'],
+		extensions: ['.js', '.jsx', '.ts', '.tsx'],
 		modules: [
 			path.join(__dirname, './src'),
 			"node_modules"
@@ -59,7 +63,15 @@ module.exports = {
 		rules: [
 			{
 				test: /\.ts(x?)$/,
-				use: 'ts-loader',
+				use: {
+					loader: 'ts-loader',
+					options: {
+						transpileOnly: true,
+						compilerOptions: {
+							sourceMap: true
+						}
+					}
+				},
 				exclude: /node_modules/
 			}, {
 				test: /\.css$/,
@@ -134,10 +146,12 @@ module.exports = {
 			template: './egret/workbench/electron-browser/bootstrap/resdepot.html',
 			chunks: []
 		}),
-		new CopyWebpackPlugin([
-			{ from: '../resources/', to: './egret/workbench/electron-browser/bootstrap/resources/' },
-			{ from: './egret/workbench/services/files/watcher/win32/CodeHelper.exe', to: './egret/workbench/services/files/watcher/win32/CodeHelper.exe' }
-		]),
+		new CopyWebpackPlugin({
+			patterns: [
+				{ from: '../resources/', to: './egret/workbench/electron-browser/bootstrap/resources/' },
+				{ from: './egret/workbench/services/files/watcher/win32/CodeHelper.exe', to: './egret/workbench/services/files/watcher/win32/CodeHelper.exe' }
+			]
+		}),
 		new TerserPlugin({
 			terserOptions: {
 				compress: {

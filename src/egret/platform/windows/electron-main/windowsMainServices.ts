@@ -5,7 +5,7 @@ import { ILifecycleService } from 'egret/platform/lifecycle/electron-main/lifecy
 import { IBrowserWindowEx, IWindowConfiguration } from '../common/window';
 import { mixin } from 'egret/base/common/objects';
 import { BrowserWindowEx } from './browserWindowEx';
-import { dialog, ipcMain as ipc } from 'electron';
+import { dialog, ipcMain as ipc, BrowserWindow } from 'electron';
 import { isMacintosh } from 'egret/base/common/platform';
 import { normalizeNFC } from 'egret/base/common/strings';
 import * as fs from 'fs';
@@ -297,18 +297,21 @@ export class WindowsMainService implements IWindowsMainService {
 		return this.dialogs.showMessageBox(options, focusedWindow);
 	}
 	/**
-	 * 发送消息
+	 * Send a message to the focused window (falls back when menu steals focus).
 	 * @param channel
 	 * @param args
 	 */
 	public sendToFocused(channel: string, ...args: any[]): void {
-		const focusedWindow = this.getFocusedWindow();
-		if (focusedWindow) {
-			focusedWindow.send(channel, ...args);
+		const targetWindow = this.getFocusedWindow() || this.getFallbackWindow();
+		if (targetWindow) {
+			targetWindow.send(channel, ...args);
+		} else {
+			console.warn('sendToFocused: no window available for channel', channel);
 		}
 	}
 	/**
-	 * 获得当前window
+	 * Get the focused window. On Windows, native menus often clear Electron focus;
+	 * fall back to BrowserWindow.getFocusedWindow / last opened window.
 	 */
 	public getFocusedWindow(): IBrowserWindowEx | null {
 		for (let i = 0; i < this.openedWindows.length; i++) {
@@ -320,7 +323,22 @@ export class WindowsMainService implements IWindowsMainService {
 				return instance.resWindow;
 			}
 		}
-		return null;
+		const electronFocused = BrowserWindow.getFocusedWindow();
+		if (electronFocused) {
+			const byId = this.getWindowById(electronFocused.id);
+			if (byId) {
+				return byId;
+			}
+		}
+		return this.getFallbackWindow();
+	}
+
+	private getFallbackWindow(): IBrowserWindowEx | null {
+		if (this.openedWindows.length === 0) {
+			return null;
+		}
+		const last = this.openedWindows[this.openedWindows.length - 1];
+		return last.mainWindow || null;
 	}
 	/**
 	 * 根据ID得到窗体
@@ -409,7 +427,7 @@ class Dialogs {
 					try {
 						stat = fs.statSync(paths[i]);
 					} catch (error) { }
-					if (stat.isDirectory()) {
+					if (stat && stat.isDirectory()) {
 						folderPath = paths[i];
 						break;
 					}
@@ -422,6 +440,8 @@ class Dialogs {
 					folderPath: folderPath
 				}, options.windowId);
 			}
+		}).catch((err) => {
+			console.error('pickAndOpen failed', err);
 		});
 	}
 
@@ -468,10 +488,15 @@ class Dialogs {
 			}
 			return paths;
 		}
-		return new Promise((resolve, reject) => {
-			dialog.showOpenDialog(window ? window.win : void 0, options).then((value)=> {
-				resolve(normalizePaths(value.filePaths));
-			});
+		const parent = window && window.win ? window.win : undefined;
+		const openPromise = parent
+			? dialog.showOpenDialog(parent, options)
+			: dialog.showOpenDialog(options);
+		return openPromise.then((value) => {
+			return normalizePaths(value && value.filePaths ? value.filePaths : []);
+		}).catch((err) => {
+			console.error('showOpenDialog failed', err);
+			return [];
 		});
 	}
 

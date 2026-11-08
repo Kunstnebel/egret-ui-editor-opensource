@@ -25,6 +25,7 @@ class ParserProcess extends NodeProcess implements IParserProcess {
 	 */
 	public initProcess(propertiesPath: string, uiLib: string, workspace: string, parseFolders: string[]): Promise<void> {
 		this.currentParsedFolders = parseFolders;
+		console.log('ParserProcess initProperty', propertiesPath);
 		return this.initProperty(propertiesPath).then(propertiesMap => {
 			this.properties = propertiesMap;
 			this.tsParser = new TsParser();
@@ -35,6 +36,10 @@ class ParserProcess extends NodeProcess implements IParserProcess {
 			}
 			let tasks: Promise<ISelectedStat[]>[] = [];
 			for (const item of parseFolders) {
+				if (!item || !fs.existsSync(item)) {
+					console.warn('ParserProcess skip missing folder', item);
+					continue;
+				}
 				tasks.push(this.getFiles(item));
 			}
 			return Promise.all(tasks).then((result) => {
@@ -46,18 +51,17 @@ class ParserProcess extends NodeProcess implements IParserProcess {
 				this.doFilesChanged('mix');
 				console.log('ParserProcess Inited');
 			});
-			// return this.select(workspace, ['.exml', '.ts'], null, ['node_modules', '.git', '.DS_Store']).then(fileStats => {
-			// 	for (let i = 0; i < fileStats.length; i++) {
-			// 		this.addFile(fileStats[i].resource);
-			// 	}
-			// 	this.doFilesChanged('mix');
-			// 	console.log('ParserProcess Inited');
-			// });
+		}, err => {
+			console.error('ParserProcess initProperty failed', propertiesPath, err && err.message ? err.message : err);
+			return Promise.reject(err);
 		});
 	}
 
 	private getFiles(folder: string): Promise<ISelectedStat[]> {
-		return this.select(folder, ['.exml', '.ts'], null, ['node_modules', '.git', '.DS_Store']);
+		return this.select(folder, ['.exml', '.ts'], null, ['node_modules', '.git', '.DS_Store']).catch(err => {
+			console.warn('ParserProcess getFiles failed for', folder, err && err.message ? err.message : err);
+			return [] as ISelectedStat[];
+		});
 	}
 
 	/**

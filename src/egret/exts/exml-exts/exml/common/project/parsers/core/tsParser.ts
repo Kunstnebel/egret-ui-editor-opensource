@@ -196,6 +196,48 @@ export class TsParser implements IDisposable {
 				getCurrentDirectory: () => process.cwd(),
 				getCompilationSettings: () => options,
 				getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+				// Required by newer TypeScript language service hosts
+				fileExists: (fileName) => {
+					try {
+						return fs.existsSync(fileName) && fs.statSync(fileName).isFile();
+					} catch (_e) {
+						return false;
+					}
+				},
+				readFile: (fileName) => {
+					try {
+						return fs.readFileSync(fileName, 'utf8');
+					} catch (_e) {
+						return undefined;
+					}
+				},
+				directoryExists: (directoryName) => {
+					try {
+						return fs.existsSync(directoryName) && fs.statSync(directoryName).isDirectory();
+					} catch (_e) {
+						return false;
+					}
+				},
+				getDirectories: (directoryName) => {
+					try {
+						return fs.readdirSync(directoryName).filter(name => {
+							try {
+								return fs.statSync(require('path').join(directoryName, name)).isDirectory();
+							} catch (_e) {
+								return false;
+							}
+						});
+					} catch (_e) {
+						return [];
+					}
+				},
+				realpath: (path) => {
+					try {
+						return fs.realpathSync(path);
+					} catch (_e) {
+						return path;
+					}
+				}
 			};
 			this.services = ts.createLanguageService(this.servicesHost, ts.createDocumentRegistry());
 		}

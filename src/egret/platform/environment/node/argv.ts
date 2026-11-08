@@ -1,5 +1,5 @@
 
-import * as minimist from 'minimist';
+import minimist = require('minimist');
 import { ParsedArgs } from '../common/args';
 
 const options: minimist.Opts = {
@@ -13,7 +13,7 @@ const options: minimist.Opts = {
 	}
 };
 /**
- * 利用此方法解析命令行参数，例如`--verbose --wait`
+ * Parse command line arguments, e.g. `--verbose --wait`
  */
 export function parseArgs(args: string[]): ParsedArgs {
 	return minimist(args, options) as ParsedArgs;

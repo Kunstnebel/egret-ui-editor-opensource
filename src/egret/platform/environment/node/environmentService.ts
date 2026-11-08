@@ -107,15 +107,29 @@ export function getEUIProject(target: any): { folderPath: string | null, file: s
 			}
 		}
 		if (!folder) {
-			const arg_ = args._;
-			if (arg_ && arg_.length > 1) {
+			const arg_ = args._ || [];
+			// Prefer any positional arg that is an Egret project / existing path.
+			// Electron argv is typically: [electron.exe, appRoot, ...userArgs]
+			for (let i = 0; i < arg_.length; i++) {
+				const candidate = arg_[i];
+				if (!candidate || candidate === '.' || candidate === process.cwd()) {
+					continue;
+				}
+				if (/electron(\.exe)?$/i.test(candidate) || candidate === process.execPath) {
+					continue;
+				}
+				try {
+					const project = getEUIProjectPath(candidate);
+					if (project && project.folderPath && isEgretFolder(project.folderPath)) {
+						folder = project.folderPath;
+						break;
+					}
+				} catch (_e) { /* ignore */ }
+			}
+			if (!folder && arg_.length > 1) {
 				const first: string = arg_[0];
 				let target: string = null;
-				if (first.endsWith('electron.exe') ||
-					first.endsWith('Electron')) {
-					// DEBUG
-					// npm run start
-					// electron .
+				if (/electron(\.exe)?$/i.test(first) || first === process.execPath) {
 					if (arg_.length > 2) {
 						target = arg_[2];
 					}

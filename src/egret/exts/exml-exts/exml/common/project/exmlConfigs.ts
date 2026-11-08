@@ -98,6 +98,9 @@ export abstract class AbstractExmlConfig implements IDisposable {
 	private idMap: { [id: string]: string } = {};
 	protected doInit(): Promise<void> {
 		let promise = this._projectModel.getEngineInfo().then(engineInfo => {
+			if (!engineInfo) {
+				throw new Error('Egret engine info is unavailable');
+			}
 			this.currentEngineInfo = engineInfo;
 			this._projectUri = this._projectModel.project;
 			this._manifestUri = this.getManifestUri(engineInfo);
@@ -108,22 +111,46 @@ export abstract class AbstractExmlConfig implements IDisposable {
 			this.initParser(engineInfo);
 		});
 		promise = promise.then(() => {
-			return this.fileService.resolveContent(this.manifestUri).then(content => {
-				const manifestStr: string = content.value;
-				this.idMap = {};
-				try {
-					var manifest = xmlTagUtil.parse(manifestStr);
-				} catch (error) { }
-				if (manifest) {
-					for (let i = 0; i < manifest.children.length; i++) {
-						const item = manifest.children[i];
-						const id = item.attributes['id'];
-						const className = item.attributes['module'] + '.' + id;
+			// Read engine files via fs — they live outside the workspace
+			const manifestPath = this.manifestUri ? this.manifestUri.fsPath : '';
+			let manifestStr = '';
+			try {
+				if (manifestPath && fs.existsSync(manifestPath)) {
+					manifestStr = fs.readFileSync(manifestPath, 'utf8');
+				} else if (this.currentEngineInfo && (this.currentEngineInfo as any).getResolvedEuiManifestPath) {
+					const fallback = (this.currentEngineInfo as any).getResolvedEuiManifestPath();
+					if (fallback && fs.existsSync(fallback)) {
+						manifestStr = fs.readFileSync(fallback, 'utf8');
+						this._manifestUri = URI.file(fallback);
+					}
+				}
+			} catch (error) {
+				console.error('Failed to read EUI manifest', error);
+			}
+			this.idMap = {};
+			let manifest: sax.Tag = null;
+			try {
+				if (manifestStr) {
+					manifest = xmlTagUtil.parse(manifestStr, false);
+				}
+			} catch (error) {
+				console.error('Failed to parse EUI manifest', error);
+			}
+			if (manifest && manifest.children) {
+				for (let i = 0; i < manifest.children.length; i++) {
+					const item = manifest.children[i];
+					if (!item || !item.attributes) {
+						continue;
+					}
+					const id = item.attributes['id'];
+					const moduleName = item.attributes['module'];
+					if (id) {
+						const className = moduleName ? (moduleName + '.' + id) : id;
 						this.idMap[id] = className;
 					}
 				}
-				this.manifest = manifest;
-			});
+			}
+			this.manifest = manifest;
 		});
 		return promise;
 	}
@@ -505,36 +532,67 @@ export class EUIExmlConfig extends AbstractExmlConfig {
 		this.coreParser = new ExmlCoreParserEUI();
 	}
 	protected initParser(engineInfo: EgretEngineInfo): void {
-		this.parseCenter = createParseCenter(this.instantiationService, engineInfo.euiPropertiesPath, 'eui');
+		const propertiesPath = engineInfo.getResolvedEuiPropertiesPath
+			? engineInfo.getResolvedEuiPropertiesPath()
+			: engineInfo.euiPropertiesPath;
+		this.parseCenter = createParseCenter(this.instantiationService, propertiesPath, 'eui');
 		this.parseCenter.onClassChanges(e => this.classChanged_handler(e));
 	}
 	protected doInit(): Promise<void> {
 		const promise = super.doInit().then(() => {
-			function format(path: string): string {
-				if (path.charAt(0) === '/') {
-					path = 'file://' + path;
-				} else {
-					path = 'file:///' + path;
+			function formatFileUrl(fsPath: string): string {
+				let normalized = (fsPath || '').replace(/\\/g, '/');
+				if (normalized.charAt(0) === '/') {
+					return 'file://' + normalized;
 				}
-				return path;
+				return 'file:///' + normalized;
 			}
-			let path: string = this.projectUri.fsPath;
-			if (path.charAt(path.length - 1) == '/') {
-				path = path.slice(0, path.length - 1);
+			function findEuiRuntimeIndex(): string {
+				const candidates: string[] = [];
+				const push = (p: string) => { if (p) { candidates.push(p); } };
+				try { push(paths.join(process.cwd(), 'euiruntime', 'index.html')); } catch (_e) { /* ignore */ }
+				try {
+					const electronRemote = require('@electron/remote');
+					if (electronRemote && electronRemote.app) {
+						push(paths.join(electronRemote.app.getAppPath(), 'euiruntime', 'index.html'));
+					}
+				} catch (_e) { /* ignore */ }
+				try {
+					let dir = typeof __dirname === 'string' ? __dirname : process.cwd();
+					for (let i = 0; i < 10; i++) {
+						push(paths.join(dir, 'euiruntime', 'index.html'));
+						const parent = paths.dirname(dir);
+						if (!parent || parent === dir) {
+							break;
+						}
+						dir = parent;
+					}
+				} catch (_e) { /* ignore */ }
+				for (let i = 0; i < candidates.length; i++) {
+					const abs = paths.normalize(candidates[i]);
+					if (fs.existsSync(abs)) {
+						return formatFileUrl(abs);
+					}
+				}
+				return '../../../../../euiruntime/index.html';
 			}
-			path = format(path);
+			let projectPath: string = this.projectUri.fsPath;
+			if (projectPath.charAt(projectPath.length - 1) == '/' || projectPath.charAt(projectPath.length - 1) == '\\') {
+				projectPath = projectPath.slice(0, projectPath.length - 1);
+			}
+			projectPath = formatFileUrl(projectPath);
 
-			const egretLibPath = fs.existsSync(this.egretLibUri.fsPath) ? format(this.egretLibUri.fsPath) : 'libs/modules/egret/egret.js';
-			const egretWebLibPath = fs.existsSync(this.egretWebLibUri.fsPath) ? format(this.egretWebLibUri.fsPath) : 'libs/modules/egret/egret.web.js';
-			const uiLibPath = fs.existsSync(this.uiLibUri.fsPath) ? format(this.uiLibUri.fsPath) : 'libs/modules/eui/eui.js';
-			const tweenPath = fs.existsSync(this.tweenUri.fsPath) ? format(this.tweenUri.fsPath) : 'libs/modules/tween/tween.js';
+			const egretLibPath = fs.existsSync(this.egretLibUri.fsPath) ? formatFileUrl(this.egretLibUri.fsPath) : 'libs/modules/egret/egret.js';
+			const egretWebLibPath = fs.existsSync(this.egretWebLibUri.fsPath) ? formatFileUrl(this.egretWebLibUri.fsPath) : 'libs/modules/egret/egret.web.js';
+			const uiLibPath = fs.existsSync(this.uiLibUri.fsPath) ? formatFileUrl(this.uiLibUri.fsPath) : 'libs/modules/eui/eui.js';
+			const tweenPath = fs.existsSync(this.tweenUri.fsPath) ? formatFileUrl(this.tweenUri.fsPath) : 'libs/modules/tween/tween.js';
 
-			this.runtimeUrl = '../../../../../euiruntime/index.html?' +
-				'project=' + path + '&' +
-				'egretLibPath=' + egretLibPath + '&' +
-				'egretWebLibPath=' + egretWebLibPath + '&' +
-				'uiLibPath=' + uiLibPath + '&' +
-				'tweenPath=' + tweenPath;
+			this.runtimeUrl = findEuiRuntimeIndex() + '?' +
+				'project=' + encodeURIComponent(projectPath) + '&' +
+				'egretLibPath=' + encodeURIComponent(egretLibPath) + '&' +
+				'egretWebLibPath=' + encodeURIComponent(egretWebLibPath) + '&' +
+				'uiLibPath=' + encodeURIComponent(uiLibPath) + '&' +
+				'tweenPath=' + encodeURIComponent(tweenPath);
 		});
 		return promise.then(() => {
 			//默认组件的初始化
@@ -564,7 +622,10 @@ export class EUIExmlConfig extends AbstractExmlConfig {
 	}
 
 	protected getManifestUri(engineInfo: EgretEngineInfo): URI {
-		return URI.file(engineInfo.euiManifestPath);
+		const manifestPath = engineInfo.getResolvedEuiManifestPath
+			? engineInfo.getResolvedEuiManifestPath()
+			: engineInfo.euiManifestPath;
+		return URI.file(manifestPath);
 	}
 	protected getUILibUri(engineInfo: EgretEngineInfo): URI {
 		return URI.file(engineInfo.euiLibPath);
@@ -591,6 +652,10 @@ export class EUIExmlConfig extends AbstractExmlConfig {
 				return this.parseCenter.init().then(() => {
 					this.hostInited = true;
 					this._hosts = [];
+					if (!this.manifest) {
+						console.error('EUI manifest is not loaded; host component list unavailable');
+						return;
+					}
 					const components: sax.Tag[] = xmlTagUtil.child(this.manifest, 'component');
 					if (components.length === 0) {
 						return;

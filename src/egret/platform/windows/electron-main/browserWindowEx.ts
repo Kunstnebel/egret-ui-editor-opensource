@@ -5,6 +5,7 @@ import { assign } from 'egret/base/common/objects';
 import { Event, Emitter } from 'vs/base/common/event';
 import * as path from 'path';
 import * as fsextra from 'fs-extra';
+import { pathToFileURL } from 'url';
 import { IEnvironmentService } from 'egret/platform/environment/common/environment';
 
 type WindowState = {
@@ -62,10 +63,12 @@ export class BrowserWindowEx implements IBrowserWindowEx {
 				webPreferences: {
 					webSecurity: false,
 					nodeIntegration: true,
-					enableRemoteModule: true
+					contextIsolation: false,
+					sandbox: false
 				}
 			};
 			this._win = new BrowserWindow(options);
+			require('@electron/remote/main').enable(this._win.webContents);
 		} else {
 			const state = this.getWindowState();
 			this.normalBounds = {
@@ -85,10 +88,12 @@ export class BrowserWindowEx implements IBrowserWindowEx {
 				webPreferences: {
 					webSecurity: false,
 					nodeIntegration: true,
-					enableRemoteModule: true
+					contextIsolation: false,
+					sandbox: false
 				}
 			};
 			this._win = new BrowserWindow(options);
+			require('@electron/remote/main').enable(this._win.webContents);
 			if (state.isMaximized) {
 				this._win.maximize();
 			}
@@ -175,16 +180,31 @@ export class BrowserWindowEx implements IBrowserWindowEx {
 			webContents.zoomFactor = 1;
 			webContents.setVisualZoomLevelLimits(1, 1);
 		});
+		webContents.on('console-message', (_event, level, message, line, sourceId) => {
+			const prefix = ['LOG', 'WARN', 'ERROR'][level] || 'LOG';
+			console.log(`[renderer:${prefix}] ${message} (${sourceId}:${line})`);
+		});
+		webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+			console.error('did-fail-load', errorCode, errorDescription, validatedURL);
+		});
 		webContents.addListener('will-navigate', e => {
 			e.preventDefault();
 		});
+		// Temporary: surface renderer errors while modernizing
+		if (process.env.EUI_DEBUG === '1') {
+			webContents.openDevTools({ mode: 'detach' });
+		}
 	}
 
 	protected getUrl(windowConfiguration: IWindowConfiguration): string {
 		windowConfiguration.windowId = this._win.id;
 		const environment = parseArgs(process.argv);
 		const config = assign(environment, windowConfiguration);
-		return `file://${path.join(app.getAppPath(), './out/egret/workbench/electron-browser/bootstrap/index.html')}?config=${encodeURIComponent(JSON.stringify(config))}`;
+		const htmlPath = path.join(app.getAppPath(), 'out', 'egret', 'workbench', 'electron-browser', 'bootstrap', 'index.html');
+		const fileUrl = pathToFileURL(htmlPath).href;
+		const url = `${fileUrl}?config=${encodeURIComponent(JSON.stringify(config))}`;
+		console.log('Loading window URL', url.substring(0, 200) + '...');
+		return url;
 	}
 	/**
 	 * 窗体的id

@@ -40,7 +40,8 @@ import { AnimationView } from '../parts/animation/electron-browser/views/animati
 import { IAnimationService } from 'egret/workbench/parts/animation/common/animation';
 import { AnimationService } from 'egret/workbench/parts/animation/common/animationService';
 import { ClosableTitleRenderFactory, DocumentPanelSerialize } from './boxlayoutRender';
-import { remote, ipcRenderer } from 'electron';
+import { ipcRenderer } from 'electron';
+import * as remote from '@electron/remote';
 import { IWindowClientService } from 'egret/platform/windows/common/window';
 import './media/workbench.css';
 import { IExplorerService } from '../parts/files/common/explorer';

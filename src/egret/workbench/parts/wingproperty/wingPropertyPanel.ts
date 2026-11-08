@@ -1,6 +1,6 @@
 import { InnerBtnWindow } from 'egret/platform/innerwindow/browser/innerWindow';
 import { IDisposable, dispose } from 'egret/base/common/lifecycle';
-import { remote } from 'electron';
+import * as remote from '@electron/remote';
 import { EgretProjectModel } from 'egret/exts/exml-exts/exml/common/project/egretProject';
 import { addClass, removeClass } from 'egret/base/common/dom';
 import { TextInput } from 'egret/base/browser/ui/inputs';

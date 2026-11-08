@@ -23,6 +23,8 @@ import { IWorkbenchEditorService } from 'egret/workbench/services/editor/common/
 import { IWorkspaceService } from 'egret/platform/workspace/common/workspace';
 import { SystemCommands } from 'egret/platform/operations/commands/systemCommands';
 import { FileRootCommands } from '../../commands/fileRootCommands';
+import { IEgretProjectService } from 'egret/exts/exml-exts/project';
+import { resolveExmlRootAbsolutePath } from 'egret/exts/exml-exts/exml/common/project/exmlRootUtils';
 
 
 /**
@@ -50,7 +52,8 @@ export class ExplorerView extends PanelContentDom implements IModelRequirePart, 
 		@IWorkbenchEditorService private editorService: IWorkbenchEditorService,
 		@INotificationService private notificationService: INotificationService,
 		@IOperationBrowserService private operationService: IOperationBrowserService,
-		@IExplorerService private explorerService: IExplorerService
+		@IExplorerService private explorerService: IExplorerService,
+		@IEgretProjectService private egretProjectService: IEgretProjectService
 	) {
 		super(instantiationService);
 		this.explorerService.init(this);
@@ -556,13 +559,22 @@ export class ExplorerView extends PanelContentDom implements IModelRequirePart, 
 	}
 
 	private resolveRoots(targetToResolve: { root: FileStat, resource: URI, resolveTo: URI[] }, targetsToExpand: URI[]): Promise<any> {
-		const input = this.model.root;
+		const useExmlRoots = !!(this.egretProjectService &&
+			this.egretProjectService.projectModel &&
+			this.egretProjectService.projectModel.exmlRoot &&
+			this.egretProjectService.projectModel.exmlRoot.length > 0);
+		const input: FileStat | Model = useExmlRoots ? this.model : this.model.root;
 
-		const setInputAndExpand = (input: FileStat | Model, statsToExpand: FileStat[]) => {
-			if (input === this.model && statsToExpand.every(fs => fs && !fs.isRoot)) {
+		const setInputAndExpand = (treeInput: FileStat | Model, statsToExpand: FileStat[]) => {
+			if (treeInput === this.model.root && statsToExpand.every(fs => fs && !fs.isRoot)) {
 				statsToExpand = [this.model.root].concat(statsToExpand);
 			}
-			return this.explorerViewer.setInput(input).then(() => this.explorerViewer.expandAll(statsToExpand));
+			return this.explorerViewer.setInput(treeInput).then(() => {
+				if (statsToExpand && statsToExpand.length) {
+					return this.explorerViewer.expandAll(statsToExpand);
+				}
+				return void 0;
+			});
 		};
 		if (!targetToResolve.resource) {
 			const promise = this.explorerViewer.setInput(this.model);
@@ -577,12 +589,7 @@ export class ExplorerView extends PanelContentDom implements IModelRequirePart, 
 			});
 		} else {
 			this.treeContainer.style.display = '';
-			return this.fileService.resolveFile(targetToResolve.resource, targetToResolve.resolveTo).then(result => {
-
-				const fileStat = FileStat.create(result, targetToResolve.root, targetToResolve.resolveTo);
-				FileStat.mergeLocalWithDisk(fileStat, this.model.root);
-
-				const statsToExpand: FileStat[] = this.explorerViewer.getExpandedElements().concat(targetsToExpand.map(expand => this.model.find(expand)));
+			return this.resolveExplorerRoots(targetToResolve, targetsToExpand).then((statsToExpand) => {
 				if (input == this.explorerViewer.getInput()) {
 					return this.explorerViewer.refresh().then(() => {
 						return this.explorerViewer.expandAll(statsToExpand);
@@ -590,15 +597,88 @@ export class ExplorerView extends PanelContentDom implements IModelRequirePart, 
 				}
 				const promise = setInputAndExpand(input, statsToExpand);
 				this.explorerViewer.layout();
-				return new Promise<any>((resolve, reject) => {
-					promise.then(() => {
-						resolve(void 0);
-					}, error => {
-						reject(error);
-					});
-				});
+				return promise;
 			});
 		}
+	}
+
+	/**
+	 * Prefer exmlRoot folders (e.g. eui_skins, skins) as top-level explorer nodes.
+	 * Does not use FileStat.addChild — that rewrites resource to parent/name and breaks nested paths.
+	 */
+	private resolveExplorerRoots(
+		targetToResolve: { root: FileStat, resource: URI, resolveTo: URI[] },
+		targetsToExpand: URI[]
+	): Promise<FileStat[]> {
+		const workspace = this.workspaceService.getWorkspace();
+		const projectModel = this.egretProjectService ? this.egretProjectService.projectModel : null;
+		const configuredRoots = projectModel && projectModel.exmlRoot ? projectModel.exmlRoot : [];
+
+		if (workspace && workspace.uri && configuredRoots.length > 0) {
+			const rootStat = this.model.root;
+			rootStat.isDirectory = true;
+			rootStat.isDirectoryResolved = true;
+			(rootStat as any)._exmlRootsAsChildren = true;
+
+			const absPaths: string[] = [];
+			const seen: { [key: string]: boolean } = {};
+			const pushAbs = (absPath: string) => {
+				const key = paths.normalize(absPath).toLowerCase();
+				if (!seen[key]) {
+					seen[key] = true;
+					absPaths.push(absPath);
+				}
+			};
+			for (let i = 0; i < configuredRoots.length; i++) {
+				pushAbs(resolveExmlRootAbsolutePath(workspace.uri.fsPath, configuredRoots[i]));
+			}
+			// Also surface sibling resource/skins when only eui_skins is configured
+			const resourceDir = paths.join(workspace.uri.fsPath, 'resource');
+			const siblingSkins = paths.join(resourceDir, 'skins');
+			const siblingEui = paths.join(resourceDir, 'eui_skins');
+			try {
+				const fs = require('fs') as typeof import('fs');
+				if (fs.existsSync(siblingSkins)) {
+					pushAbs(siblingSkins);
+				}
+				if (fs.existsSync(siblingEui)) {
+					pushAbs(siblingEui);
+				}
+			} catch (_e) { /* ignore */ }
+
+			const resolveToken = ((rootStat as any)._exmlResolveToken || 0) + 1;
+			(rootStat as any)._exmlResolveToken = resolveToken;
+
+			const resolvePromises = absPaths.map(absPath => {
+				const rootUri = URI.file(absPath);
+				return this.fileService.resolveFile(rootUri, []).then(result => {
+					const child = FileStat.create(result, rootStat);
+					// Keep the resolved absolute URI (do not call addChild/updateResource)
+					child.parent = rootStat;
+					return child;
+				}, error => {
+					console.warn('EXML root missing:', absPath, error);
+					return null;
+				});
+			});
+
+			return Promise.all(resolvePromises).then(children => {
+				if ((rootStat as any)._exmlResolveToken !== resolveToken) {
+					return [];
+				}
+				const roots = children.filter(c => !!c) as FileStat[];
+				rootStat.children = roots.slice();
+				// Expand only the top-level skin roots (one level) so .exml files are visible
+				const reveal = targetsToExpand.map(expandUri => this.model.find(expandUri)).filter(s => !!s);
+				return roots.concat(reveal);
+			});
+		}
+
+		return this.fileService.resolveFile(targetToResolve.resource, targetToResolve.resolveTo).then(result => {
+			const fileStat = FileStat.create(result, targetToResolve.root, targetToResolve.resolveTo);
+			FileStat.mergeLocalWithDisk(fileStat, this.model.root);
+			return this.explorerViewer.getExpandedElements().concat(targetsToExpand.map(expand => this.model.find(expand)));
+		});
 	}
 
 	private getResolvedDirectories(stat: FileStat, resolvedDirectories: URI[]): void {

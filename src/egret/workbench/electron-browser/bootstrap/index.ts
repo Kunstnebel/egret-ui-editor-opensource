@@ -3,11 +3,14 @@ import { getStartConfig } from 'egret/platform/environment/common/args';
 
 
 function main() {
+	const config = getStartConfig();
 	const main = new Main();
-	main.startup(getStartConfig()).then(() => {
+	main.startup(config).then(() => {
 	}, error => {
-		if(error.stack){
+		if (error && error.stack) {
 			console.log(error.stack);
+		} else {
+			console.log(error);
 		}
 	});
 }

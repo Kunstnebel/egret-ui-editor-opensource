@@ -2,7 +2,7 @@ import { IInstantiationService } from 'egret/platform/instantiation/common/insta
 import { IWorkbenchEditorService } from '../services/editor/common/ediors';
 import { BaseEditor } from 'egret/editor/browser/baseEditor';
 import URI from '../../base/common/uri';
-import { remote } from 'electron';
+import * as remote from '@electron/remote';
 import * as  electron from 'electron';
 import { localize } from '../../base/localization/nls';
 import { IEditor } from 'egret/editor/core/editors';

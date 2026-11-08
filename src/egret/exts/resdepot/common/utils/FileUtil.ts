@@ -3,7 +3,7 @@ import * as fsextra from 'fs-extra';
 import paths = require('egret/base/common/paths');
 import { URI } from 'vs/base/common/uri';
 /* tslint:disable */
-import { remote } from 'electron';
+import * as remote from '@electron/remote';
 import * as encoding from 'egret/base/common/encoding';
 /* tslint:enable */
 

@@ -1,4 +1,5 @@
-import { shell, remote } from 'electron';
+import { shell } from 'electron';
+import * as remote from '@electron/remote';
 import { LauncherErrorCode, EgretWebsite } from './launcherDefines';
 import { localize } from 'egret/base/localization/nls';
 

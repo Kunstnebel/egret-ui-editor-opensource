@@ -2,7 +2,7 @@ import * as paths from 'path';
 import * as cp from 'child_process';
 import * as sd from 'string_decoder';
 
-import { remote } from 'electron';
+import * as remote from '@electron/remote';
 import { IWatcher, IRawFileChange, normalize, toFileChangesEvent } from '../common';
 import { FileChangesEvent, FileChangeType } from 'egret/platform/files/common/files';
 import URI from 'egret/base/common/uri';

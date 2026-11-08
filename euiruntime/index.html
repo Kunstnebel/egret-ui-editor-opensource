@@ -59,7 +59,9 @@
                     addScripts(scripts,callBack);
                 };
                 script.onerror = function(e){
-                    console.log(e);
+                    console.error('Failed to load runtime script:', src, e);
+                    // Continue chain so egret_loaded can still fire / surface a clearer error
+                    addScripts(scripts, callBack);
                 }
                 script.src= src;
                 head.appendChild(script);

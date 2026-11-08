@@ -9,7 +9,8 @@ import { IMouseEvent, DragMouseEvent } from 'vs/base/browser/mouseEvent';
 import { Tree } from 'vs/base/parts/tree/browser/treeImpl';
 import * as path from 'path';
 import * as paths from 'egret/base/common/paths';
-import { MenuItemConstructorOptions, MenuItem, remote, Menu, ipcRenderer } from 'electron';
+import { MenuItemConstructorOptions, MenuItem, Menu, ipcRenderer } from 'electron';
+import * as remote from '@electron/remote';
 import { isMacintosh, isWindows, isLinux } from 'egret/base/common/platform';
 import { IWorkspaceService } from 'egret/platform/workspace/common/workspace';
 import { IClipboardService } from 'egret/platform/clipboard/common/clipboardService';
@@ -28,6 +29,7 @@ import { IOperationBrowserService } from 'egret/platform/operations/common/opera
 import { localize } from 'egret/base/localization/nls';
 import { IEgretProjectService } from 'egret/exts/exml-exts/project';
 import { dispose } from 'egret/base/common/lifecycle';
+import { resolveExmlRootAbsolutePath } from 'egret/exts/exml-exts/exml/common/project/exmlRootUtils';
 
 import './media/explorer.css';
 import { IWorkbenchEditorService } from 'egret/workbench/services/editor/common/ediors';
@@ -74,6 +76,10 @@ export class FileDataSource implements IDataSource {
 	 */
 	public getChildren(tree: ITree, stat: FileStat | Model): Promise<FileStat[]> {
 		if (stat instanceof Model) {
+			// When EXML roots were installed as children, show eui_skins / skins at top level
+			if (stat.root && (stat.root as any)._exmlRootsAsChildren && stat.root.children) {
+				return Promise.resolve(stat.root.children);
+			}
 			return Promise.resolve([stat.root]);
 		}
 		if (stat.isDirectoryResolved) {
@@ -715,62 +721,85 @@ export class FileFilter implements IFilter {
 		@IEgretProjectService private egretProjectService: IEgretProjectService,
 		@IWorkspaceService private workspaceService: IWorkspaceService) {
 	}
+
+	private getExmlRootAbsPaths(): string[] {
+		const roots: string[] = [];
+		const seen: { [key: string]: boolean } = {};
+		const workspace = this.workspaceService.getWorkspace();
+		if (!workspace || !workspace.uri || !this.egretProjectService.projectModel) {
+			return roots;
+		}
+		const push = (absPath: string) => {
+			const key = paths.normalize(absPath).toLowerCase();
+			if (!seen[key]) {
+				seen[key] = true;
+				roots.push(paths.normalize(absPath));
+			}
+		};
+		const exmlRoots = this.egretProjectService.projectModel.exmlRoot || [];
+		for (let i = 0; i < exmlRoots.length; i++) {
+			push(resolveExmlRootAbsolutePath(workspace.uri.fsPath, exmlRoots[i]));
+		}
+		// Match explorer: also allow resource/skins + resource/eui_skins
+		try {
+			const fs = require('fs') as typeof import('fs');
+			const resourceDir = path.join(workspace.uri.fsPath, 'resource');
+			const siblingSkins = path.join(resourceDir, 'skins');
+			const siblingEui = path.join(resourceDir, 'eui_skins');
+			if (fs.existsSync(siblingSkins)) {
+				push(siblingSkins);
+			}
+			if (fs.existsSync(siblingEui)) {
+				push(siblingEui);
+			}
+		} catch (_e) { /* ignore */ }
+		return roots;
+	}
+
 	/**
-	 * 指定的元素是否显示
+	 * Whether a tree element should be visible.
+	 * With exmlRoot configured: only those roots, their folders, and .exml files.
 	 */
 	public isVisible(tree: ITree, stat: FileStat): boolean {
 		if (stat.isRoot) {
 			return true;
 		}
-		if (path.basename(stat.resource.fsPath).toLocaleLowerCase() == '.ds_store') {
+		const baseName = path.basename(stat.resource.fsPath).toLocaleLowerCase();
+		if (baseName === '.ds_store' || baseName === 'node_modules') {
 			return false;
 		}
-		if (path.basename(stat.resource.fsPath).toLocaleLowerCase() == 'node_modules') {
-			return false;
-		}
-		if (this.egretProjectService.projectModel &&
-			this.egretProjectService.projectModel.project) {
-			const configs = this.egretProjectService.projectModel.resConfigs;
-			for (let i = 0; i < configs.length; i++) {
-				const element = paths.normalize(paths.join(this.egretProjectService.projectModel.project.fsPath, configs[i].url));
-				if (paths.isEqualOrParent(element, paths.normalize(stat.resource.fsPath))) {
-					return true;
+
+		const exmlRootAbs = this.getExmlRootAbsPaths();
+		const cur = paths.normalize(stat.resource.fsPath);
+
+		if (exmlRootAbs.length > 0) {
+			// Directory: visible only if it is an exmlRoot or a descendant of one (NOT ancestors like "resource")
+			if (stat.isDirectory) {
+				for (let i = 0; i < exmlRootAbs.length; i++) {
+					const rootAbs = exmlRootAbs[i];
+					if (paths.isEqual(cur, rootAbs) || paths.isEqualOrParent(cur, rootAbs)) {
+						return true;
+					}
 				}
+				return false;
 			}
-		}
-		// if (path.basename(stat.resource.fsPath).toLocaleLowerCase() === 'default.res.json') {
-		// 	return true;
-		// }
-		//有设置皮肤根路径
-		let exmlRoots: URI[] = [];
-		if (this.egretProjectService.projectModel &&
-			this.egretProjectService.projectModel.exmlRoot.length > 0
-		) {
-			exmlRoots = exmlRoots.concat(this.egretProjectService.projectModel.exmlRoot);
-		}
-		if (stat.isDirectory &&
-			exmlRoots.length > 0 &&
-			this.workspaceService.getWorkspace() &&
-			this.workspaceService.getWorkspace().uri
-		) {
-			for (let i = 0; i < exmlRoots.length; i++) {
-				const curExmlRoot = paths.normalize(path.join(this.workspaceService.getWorkspace().uri.fsPath, exmlRoots[i].fsPath));
-				const cur = paths.normalize(stat.resource.fsPath);
-				// 当前目录为exmlRoot本身、父节点、子节点时均应该可见
-				const result = (paths.isEqualOrParent(cur, curExmlRoot) || paths.isEqualOrParent(curExmlRoot, cur));
-				if (result) {
+			// Files: only .exml under an exmlRoot
+			if (path.extname(cur).toLocaleLowerCase() !== '.exml') {
+				return false;
+			}
+			for (let i = 0; i < exmlRootAbs.length; i++) {
+				if (paths.isEqualOrParent(cur, exmlRootAbs[i])) {
 					return true;
 				}
 			}
 			return false;
 		}
+
+		// Fallback without exmlRoot: directories + .exml only
 		if (stat.isDirectory) {
 			return true;
 		}
-		if (path.extname(stat.resource.fsPath).toLocaleLowerCase() == '.exml') {
-			return true;
-		}
-		return false;
+		return path.extname(stat.resource.fsPath).toLocaleLowerCase() === '.exml';
 	}
 }
 

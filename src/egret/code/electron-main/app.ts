@@ -72,6 +72,12 @@ export class CodeApplication {
 		if (!euiProject.folderPath) {
 			euiProject.folderPath = lastOpenedFolder;
 		}
+		console.log('Open window options', {
+			args: this.environmentService.args,
+			folderPath: euiProject.folderPath,
+			file: euiProject.file,
+			lastOpenedFolder
+		});
 		return {
 			cli: this.environmentService.args,
 			folderPath: euiProject.folderPath,

@@ -5,14 +5,13 @@ import { IWindowClientService } from '../../windows/common/window';
 import { IOperationBrowserService } from '../common/operations-browser';
 import { systemRols, SystemCommands } from '../commands/systemCommands';
 
-import * as Mousetrap from 'mousetrap';
+import Mousetrap = require('mousetrap');
 import { isWindows } from 'egret/base/common/platform';
 
-
-(function (Mousetrap) {
-	const _globalCallbacks = {};
-	const _originalStopCallback = Mousetrap.prototype.stopCallback;
-	Mousetrap.prototype.stopCallback = function (e, element, combo, sequence) {
+(function (MousetrapLib: typeof Mousetrap) {
+	const _globalCallbacks: { [key: string]: boolean } = {};
+	const _originalStopCallback = MousetrapLib.prototype.stopCallback;
+	MousetrapLib.prototype.stopCallback = function (e, element, combo, sequence) {
 		const self = this;
 
 		if (self.paused) {
@@ -26,7 +25,7 @@ import { isWindows } from 'egret/base/common/platform';
 		return _originalStopCallback.call(self, e, element, combo);
 	};
 
-	Mousetrap.prototype.bindGlobal = function (keys, callback, action) {
+	(MousetrapLib.prototype as any).bindGlobal = function (keys, callback, action) {
 		const self = this;
 		self.bind(keys, callback, action);
 
@@ -39,7 +38,7 @@ import { isWindows } from 'egret/base/common/platform';
 
 		_globalCallbacks[keys] = true;
 	};
-	Mousetrap['init']();
+	(MousetrapLib as any).init();
 })(Mousetrap);
 
 /**

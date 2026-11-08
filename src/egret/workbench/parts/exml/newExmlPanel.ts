@@ -6,7 +6,7 @@ import { IWorkbenchEditorService } from 'egret/workbench/services/editor/common/
 import { Label } from '../../../base/browser/ui/labels';
 import { NumberInput, TextInput } from 'egret/base/browser/ui/inputs';
 import 'egret/base/browser/ui/media/labelContainer.css';
-import { remote } from 'electron';
+import * as remote from '@electron/remote';
 import * as path from 'path';
 import { ExmlComponentPanel } from './ExmlComponentPanel';
 import TemplateTool from './TemplateTool';

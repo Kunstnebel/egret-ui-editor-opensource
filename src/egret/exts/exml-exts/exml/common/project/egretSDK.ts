@@ -1,6 +1,8 @@
 import { exec } from 'egret/base/common/cmd';
 import { ltrim } from 'egret/base/common/strings';
 import * as pathUtil from 'path';
+import * as fs from 'fs';
+import { app } from 'electron';
 import { trim, trimLeft } from '../utils/strings';
 import { localize } from 'egret/base/localization/nls';
 
@@ -77,10 +79,36 @@ export class EgretEngineInfo implements VersionInfo {
 	}
 
 	/**
-     * 得到eui框架清单文件路径
+     * EUI EXML XSD path (falls back to bundled schema when engine file is missing)
      */
 	public get euiExmlXsdPath(): string {
-		return pathUtil.join(this.path, 'tools/lib/eui/exml.xsd');
+		const enginePath = pathUtil.join(this.path, 'tools/lib/eui/exml.xsd');
+		if (fs.existsSync(enginePath)) {
+			return enginePath;
+		}
+		return getBundledEuiSchemaPath('exml.xsd');
+	}
+
+	/**
+	 * EUI manifest with bundled fallback
+	 */
+	public getResolvedEuiManifestPath(): string {
+		const enginePath = this.euiManifestPath;
+		if (fs.existsSync(enginePath)) {
+			return enginePath;
+		}
+		return getBundledEuiSchemaPath('manifest.xml');
+	}
+
+	/**
+	 * EUI properties.json with bundled fallback
+	 */
+	public getResolvedEuiPropertiesPath(): string {
+		const enginePath = this.euiPropertiesPath;
+		if (fs.existsSync(enginePath)) {
+			return enginePath;
+		}
+		return getBundledEuiSchemaPath('properties.json');
 	}
 
 	/**
@@ -114,9 +142,53 @@ export class EgretEngineInfo implements VersionInfo {
 
 let versionCaches: VersionInfo[] = null;
 let versionsPromise: Promise<VersionInfo[]> = null;
+
+function normalizeEnginePath(rawPath: string): string {
+	let enginePath = trim(ltrim(rawPath || '')).replace(/\r/g, '');
+	enginePath = enginePath.split('\\').join('/');
+	if (enginePath && enginePath.charAt(enginePath.length - 1) !== '/') {
+		enginePath += '/';
+	}
+	return enginePath;
+}
+
+function parseEgretVersionsOutput(data: string): VersionInfo[] {
+	const versionInfos: VersionInfo[] = [];
+	if (!data) {
+		return versionInfos;
+	}
+	const lines = data.split(/\r?\n/);
+	for (let i = 0; i < lines.length; i++) {
+		const versionStr = trim(lines[i]);
+		if (!versionStr) {
+			continue;
+		}
+		// Egret Engine <version> <path...>
+		const match = versionStr.match(/^Egret\s+Engine\s+(\S+)\s+(.+)$/i);
+		if (match) {
+			versionInfos.push({
+				version: trim(match[1]),
+				path: normalizeEnginePath(match[2])
+			});
+			continue;
+		}
+		const tempArr: string[] = versionStr.split(/\s+/);
+		if (tempArr.length < 4) {
+			continue;
+		}
+		tempArr.splice(0, 2);
+		const version: string = tempArr.shift();
+		const versionPath: string = tempArr.join(' ');
+		if (version && versionPath) {
+			versionInfos.push({ version: trim(version), path: normalizeEnginePath(versionPath) });
+		}
+	}
+	return versionInfos;
+}
+
 /**
- * 当前已经安装的引擎版本信息
- * @param reload 重新加载默认为false
+ * Installed Egret engine versions.
+ * @param reload reload cache
  */
 export function versions(reload: boolean = false): Promise<VersionInfo[]> {
 	if (!reload && versionCaches) {
@@ -126,34 +198,16 @@ export function versions(reload: boolean = false): Promise<VersionInfo[]> {
 	if (!versionsPromise) {
 		versionsPromise = new Promise<VersionInfo[]>((resolve, reject) => {
 			exec('egret versions').then(data => {
-				const versionInfos: VersionInfo[] = [];
-				if (data) {
-					const versions: string[] = data.split('\n');
-					for (let i = 0; i < versions.length; i++) {
-						const versionStr: string = versions[i];
-						const tempArr: string[] = versionStr.split(' ');
-						//前2位为Egret Engine 并不需要
-						tempArr.splice(0, 2);
-						const version: string = tempArr.shift();
-						//后续为地址数组, 不直接取后一位 为避免地址中存在空格
-						const versionPath: string = tempArr.join(' ');
-						let path: string = ltrim(versionPath);
-						path = path.split('\\').join('/');
-						if (path.charAt(path.length - 1) != '/') {
-							path += '/';
-						}
-						versionInfos.push({ version: version, path: path });
-					}
-				}
+				const versionInfos = parseEgretVersionsOutput(data);
 				if (versionInfos.length > 0) {
 					versionCaches = versionInfos;
 					resolve(versionInfos);
 				} else {
-					reject(localize('egretSDK.versions.envError','Failed to get the engine list, try to restore the engine environment variable to ensure that the \'egret verions\' command can be executed normally.'));
+					reject(localize('egretSDK.versions.envError', 'Failed to get the engine list, try to restore the engine environment variable to ensure that the \'egret versions\' command can be executed normally.'));
 					versionsPromise = null;
 				}
 			}, error => {
-				reject(localize('egretSDK.versions.envError','Failed to get the engine list, try to restore the engine environment variable to ensure that the \'egret verions\' command can be executed normally.'));
+				reject(localize('egretSDK.versions.envError', 'Failed to get the engine list, try to restore the engine environment variable to ensure that the \'egret versions\' command can be executed normally.'));
 				versionsPromise = null;
 			});
 		});
@@ -201,13 +255,62 @@ export function engineInfo(version: string, reload: boolean = false): Promise<Eg
 					targetInfo = infos[i];
 				}
 			}
+			// Prefer exact version, otherwise newest installed engine
+			if (!targetInfo && infos.length > 0) {
+				targetInfo = infos[infos.length - 1];
+				console.warn(`Egret engine ${version} not found, falling back to ${targetInfo.version}`);
+			}
 			if (targetInfo) {
 				resolve(targetInfo);
 			} else {
-				reject(localize('engineInfo.error','Unable to find the {0} version of the Egret engine. Please re-do this after installing or modifying the project engine version.',version));
+				reject(localize('engineInfo.error', 'Unable to find the {0} version of the Egret engine. Please re-do this after installing or modifying the project engine version.', version));
 			}
 		}, error => {
 			reject(error);
 		});
 	});
+}
+
+function getAppRoot(): string {
+	const candidates: string[] = [];
+	const push = (p: string) => {
+		if (p && candidates.indexOf(p) === -1) {
+			candidates.push(p);
+		}
+	};
+	try {
+		if (app && typeof app.getAppPath === 'function') {
+			push(app.getAppPath());
+		}
+	} catch (_e) { /* renderer */ }
+	try {
+		const electronRemote = require('@electron/remote');
+		if (electronRemote && electronRemote.app) {
+			push(electronRemote.app.getAppPath());
+		}
+	} catch (_e) { /* ignore */ }
+	push(process.cwd());
+	// Dev: app path may be out/.../bootstrap — walk up to find resources/egret-sdk/eui
+	for (let i = 0; i < candidates.length; i++) {
+		let dir = candidates[i];
+		for (let depth = 0; depth < 8; depth++) {
+			const probe = pathUtil.join(dir, 'resources', 'egret-sdk', 'eui');
+			if (fs.existsSync(probe)) {
+				return dir;
+			}
+			const parent = pathUtil.dirname(dir);
+			if (!parent || parent === dir) {
+				break;
+			}
+			dir = parent;
+		}
+	}
+	return candidates[0] || process.cwd();
+}
+
+/**
+ * Bundled EUI schema files shipped with the editor (resources/egret-sdk/eui).
+ */
+export function getBundledEuiSchemaPath(fileName: string): string {
+	return pathUtil.join(getAppRoot(), 'resources', 'egret-sdk', 'eui', fileName);
 }

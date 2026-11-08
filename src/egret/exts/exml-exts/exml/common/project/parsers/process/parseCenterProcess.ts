@@ -7,7 +7,9 @@ import { IParserProcess } from './parseProcess';
 import { createChildProcess } from 'egret/base/parts/ipc/node/ipcserver.cp';
 import { IDisposable, dispose } from 'egret/base/common/lifecycle';
 import { IEgretProjectService } from 'egret/exts/exml-exts/project';
+import { resolveExmlRootAbsolutePath } from '../../exmlRootUtils';
 import * as path from 'path';
+import * as fs from 'fs';
 import * as ts from 'typescript';
 import { isArray } from 'egret/base/common/types';
 
@@ -54,17 +56,45 @@ export class ParseCenterProcess implements IParseCenter {
 		}
 	}
 	private doInit(): Promise<void> {
-		const propertiesPath = this.propertiesPath;
+		let propertiesPath = this.propertiesPath;
+		if (!propertiesPath || !fs.existsSync(propertiesPath)) {
+			try {
+				const { getBundledEuiSchemaPath } = require('../../egretSDK');
+				const bundled = getBundledEuiSchemaPath('properties.json');
+				if (fs.existsSync(bundled)) {
+					console.warn('ParseCenter: engine properties missing, using bundled', propertiesPath, '->', bundled);
+					propertiesPath = bundled;
+				}
+			} catch (_e) { /* ignore */ }
+		}
 		const uiLib = this.uiLib;
 		const workspace = this.workspaceService.getWorkspace().uri.fsPath;
-		return this.childProcess.initProcess(propertiesPath, uiLib, workspace, this.getParseFolders());
+		const folders = this.getParseFolders();
+		console.log('ParseCenter initProcess propertiesPath=' + propertiesPath);
+		console.log('ParseCenter initProcess workspace=' + workspace);
+		console.log('ParseCenter initProcess folders=' + JSON.stringify(folders));
+		return this.childProcess.initProcess(propertiesPath, uiLib, workspace, folders).then(() => {
+			console.log('ParseCenter initProcess OK');
+		}, err => {
+			let detail = '';
+			try {
+				detail = JSON.stringify(err);
+			} catch (_e) {
+				detail = String(err);
+			}
+			if (err && err.message) {
+				detail = err.message + (err.code ? ' code=' + err.code : '') + (err.path ? ' path=' + err.path : '') + ' ' + detail;
+			}
+			console.error('ParseCenter initProcess FAILED: ' + detail);
+			return Promise.reject(err);
+		});
 	}
 
 	private getParseFolders(): string[] {
 		let folders: string[] = [];
 		const workspace = this.workspaceService.getWorkspace().uri.fsPath;
 		try {
-			const tsConfigFile = path.join(workspace, '/tsconfig.json');
+			const tsConfigFile = path.join(workspace, 'tsconfig.json');
 			const tsConfig = ts.readConfigFile(tsConfigFile, ts.sys.readFile);
 			if(tsConfig.error){
 				throw tsConfig.error;
@@ -80,12 +110,23 @@ export class ParseCenterProcess implements IParseCenter {
 			}
 		} catch (error) {
 			console.error(error);
+			folders.push(path.join(workspace, 'src'));
+			folders.push(path.join(workspace, 'libs'));
 		}
 		const exmlRoot = this.projectService.projectModel.exmlRoot;
 		for (const element of exmlRoot) {
-			folders.push(path.join(workspace, element.fsPath));
+			folders.push(resolveExmlRootAbsolutePath(workspace, element));
 		}
-		return [... new Set(folders)];
+		// Always include resource skins folders when present
+		const siblingSkins = path.join(workspace, 'resource', 'skins');
+		const siblingEui = path.join(workspace, 'resource', 'eui_skins');
+		if (fs.existsSync(siblingSkins)) {
+			folders.push(siblingSkins);
+		}
+		if (fs.existsSync(siblingEui)) {
+			folders.push(siblingEui);
+		}
+		return [...new Set(folders.map(f => path.normalize(f)))];
 	}
 
 	private ConfigChanged_handler(): void {

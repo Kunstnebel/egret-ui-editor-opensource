@@ -59,11 +59,15 @@ export class AbstractSchemaModel {
 	 * @param xsd
 	 */
 	protected initSchema(xsd: sax.Tag): boolean {
+		if (!xsd || !xsd.attributes) {
+			console.error('Egret XSD schema is missing or invalid. Design assist may be limited.');
+			return false;
+		}
 		try {
 			this._schemaDecoder.deocdeSchema(xsd);
 			this.addCustomComplexType();
 		} catch (error) {
-			console.log('\nerror:\nEgret类型项目xsd解析错误:' + error.message + '\n');
+			console.error('Egret XSD schema parse error: ' + (error && error.message ? error.message : error));
 			return false;
 		}
 		this.updateDefaultNS();

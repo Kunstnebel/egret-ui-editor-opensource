@@ -47,18 +47,6 @@ import 'monaco-editor/esm/vs/language/json/monaco.contribution';
 import 'monaco-editor/esm/vs/basic-languages/xml/xml.contribution.js';
 // import 'monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution.js';
 
-import { remote } from 'electron';
-
-const nls_zh = {
-	ChangeAllOccurrences: '修改所有出现的单词',
-	formatDocument: '格式化文档',
-	formatSelection: '格式化选定代码',
-	Cut: '剪切',
-	Copy: '复制',
-	Paste: '粘贴'
-};
-const iszh = remote.app.getLocale().startsWith('zh');
-
 MenuRegistry.getMenuItems = function (id) {
 	let result;
 	if (this._menuItems.has(id)) {
@@ -74,40 +62,16 @@ MenuRegistry.getMenuItems = function (id) {
 	}
 	for (let i = 0; i < result.length; i++) {
 		const item = result[i];
-		if(!item.command){
+		if (!item.command) {
 			continue;
 		}
-		// 从右键菜单中移除 Command Palette 和 Go to Symbol...
+		// Remove Command Palette and Go to Symbol... from context menu
 		// https://github.com/Microsoft/monaco-editor/issues/1237
 		if (item.command.id === 'editor.action.quickCommand' ||
 			item.command.id === 'editor.action.quickOutline') {
 			result.splice(i, 1);
 			i--;
 		}
-		if (iszh) {
-			switch (item.command.id) {
-				case 'editor.action.clipboardCutAction':
-					item.command.title = nls_zh.Cut;
-					break;
-				case 'editor.action.clipboardCopyAction':
-					item.command.title = nls_zh.Copy;
-					break;
-				case 'editor.action.clipboardPasteAction':
-					item.command.title = nls_zh.Paste;
-					break;
-				case 'editor.action.changeAll':
-					item.command.title = nls_zh.ChangeAllOccurrences;
-					break;
-				case 'editor.action.formatDocument':
-					item.command.title = nls_zh.formatDocument;
-					break;
-				case 'editor.action.formatSelection':
-					item.command.title = nls_zh.formatSelection;
-					break;
-				default:
-					break;
-			}
-			}
 	}
 	return result;
 };

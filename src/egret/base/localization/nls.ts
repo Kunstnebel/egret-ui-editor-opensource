@@ -1,32 +1,43 @@
 import { app } from 'electron';
-import { remote } from 'electron';
 
 import * as paths from 'path';
 import * as fs from 'fs';
 
-let initLocalizationed:boolean = false;
-//当前的系统语言
+let initLocalizationed: boolean = false;
+// Current UI language file name (forced to English)
 let nlsFileName = '';
-//多语言目录
+// Localization directory
 let nlsDir = '';
+
 /**
- * 初始化本地化工具
- * @param debug debug模式下会在本地生成多语言配置文件
+ * Resolve app path without relying on the deprecated electron.remote module.
+ */
+function getAppPath(): string {
+	if (app) {
+		return app.getAppPath();
+	}
+	try {
+		// Renderer / utility processes: use @electron/remote when available
+		const electronRemote = require('@electron/remote');
+		if (electronRemote && electronRemote.app) {
+			return electronRemote.app.getAppPath();
+		}
+	} catch (_e) { /* ignore */ }
+	return process.cwd();
+}
+
+/**
+ * Initialize localization. UI language is always English (en_US).
+ * @param debug debug mode writes localization config locally
  */
 function initLocalization(): void {
-	if(initLocalizationed){
+	if (initLocalizationed) {
 		return;
 	}
 	initLocalizationed = true;
-	let currentLocalName = '';
-	if (app) {
-		currentLocalName = app.getLocale();
-		nlsDir = paths.join(app.getAppPath(), 'nls');
-	} else if (remote) {
-		currentLocalName = remote.app.getLocale();
-		nlsDir = paths.join(remote.app.getAppPath(), 'nls');
-	}
-	currentLocalName = currentLocalName.replace(/-/g, '_');
+	// Force English UI regardless of OS locale
+	const currentLocalName = 'en_US';
+	nlsDir = paths.join(getAppPath(), 'nls');
 	nlsFileName = 'nls.metadata.' + currentLocalName + '.json';
 	doInitLocalization(paths.join(nlsDir, nlsFileName));
 }
@@ -46,10 +57,10 @@ function doInitLocalization(nlsPath: string): void {
 }
 
 /**
- * 本地化
- * @param key 多语言的key
- * @param message 默认的翻译文本
- * @param args 文本参数
+ * Localize a message
+ * @param key localization key
+ * @param message default English text
+ * @param args message format args
  */
 export function localize(key: string, message: string, ...args: (string | number | boolean | undefined | null)[]): string {
 	initLocalization();

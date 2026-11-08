@@ -613,16 +613,14 @@ export class FileService implements IFileService {
 	 * @param resource 要删除的文件路径
 	 * @param useTrash 是否删除到回收站中
 	 */
-	public del(resource: URI, useTrash?: boolean): Promise<void> {
+	public async del(resource: URI, useTrash?: boolean): Promise<void> {
 		const absolutePath = this.toAbsolutePath(resource);
 		if (useTrash) {
-			const result = shell.moveItemToTrash(absolutePath);
-			if (!result) {
-				return Promise.reject(new Error(localize('fileService.del.deleteError', 'Delete {0} error', resource.fsPath)));
-			} else {
-				// 事件
+			try {
+				await shell.trashItem(absolutePath);
 				this._onAfterOperation.fire(new FileOperationEvent(resource, FileOperation.DELETE));
-				return Promise.resolve(void 0);
+			} catch (error) {
+				throw new Error(localize('fileService.del.deleteError', 'Delete {0} error', resource.fsPath));
 			}
 		} else {
 			return new Promise((resolve, reject) => {

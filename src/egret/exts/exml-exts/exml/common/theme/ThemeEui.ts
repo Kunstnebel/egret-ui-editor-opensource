@@ -36,7 +36,9 @@ export class ThemeEUI implements ITheme {
 	 */
 	public reload(): void {
 		if (this.project.project && this.project.theme) {
-			const themeUri = URI.file(paths.join(this.project.project.fsPath, this.project.theme.fsPath));
+			const { resolveExmlRootAbsolutePath } = require('../project/exmlRootUtils');
+			const themeAbs = resolveExmlRootAbsolutePath(this.project.project.fsPath, this.project.theme);
+			const themeUri = URI.file(themeAbs);
 			this.fileService.resolveFile(themeUri).then(stat => {
 				if (this.themeConfitMtime != stat.mtime) {
 					this.themeConfitMtime = stat.mtime;

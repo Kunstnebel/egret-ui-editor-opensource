@@ -4,6 +4,16 @@
   sax.SAXStream = SAXStream
   sax.createStream = createStream
 
+  // Runtime enum (const enum in sax.d.ts is erased under transpileOnly / isolatedModules)
+  sax.Type = {
+    Tag: 0,
+    CData: 1,
+    Text: 2,
+    Attribute: 3,
+    Comment: 4,
+    ProcessingInstruction: 5
+  }
+
   // When we pass the MAX_BUFFER_LENGTH position, start checking for buffer overruns.
   // When we check, schedule the next check for MAX_BUFFER_LENGTH - (max(buffer lengths)),
   // since that's the earliest that a buffer overrun could occur.  This way, checks are

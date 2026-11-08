@@ -19,7 +19,8 @@ import { IDisposable } from 'vs/base/common/lifecycle';
 import { dispose } from 'egret/base/common/lifecycle';
 import { matchesFuzzy } from 'egret/base/common/filters';
 import { localize } from 'egret/base/localization/nls';
-import { MenuItemConstructorOptions, remote, MenuItem, Menu, clipboard } from 'electron';
+import { MenuItemConstructorOptions, MenuItem, Menu, clipboard } from 'electron';
+import * as remote from '@electron/remote';
 
 /**
  * 资源面板数据源

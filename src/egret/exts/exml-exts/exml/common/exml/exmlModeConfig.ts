@@ -57,31 +57,50 @@ export class ExmlModelConfig {
 	public setRuntime(runtime: EgretRuntimeDelegate, refreshRes = true): void {
 		this.loaded = false;
 		this._runtime = runtime;
-		this._runtime.getRuntime().then(runtime => {
-			this.runtimeApi = runtime;
+		const finishLoaded = () => {
+			this.loaded = true;
+			if (this.ensureLoadedPromiseReslove) {
+				this.ensureLoadedPromiseReslove(void 0);
+			}
+			this.ensureLoadedPromise = null;
+			this.ensureLoadedPromiseReslove = null;
+		};
+		this._runtime.getRuntime().then(runtimeApi => {
+			this.runtimeApi = runtimeApi;
+			if (!runtimeApi || !runtimeApi.eui || !runtimeApi.eui.sys || !runtimeApi.eui.sys.EXMLConfig) {
+				console.error('Egret runtime loaded but eui.sys.EXMLConfig is missing');
+				finishLoaded();
+				return;
+			}
 			this.exmlConfigInRuntime = new this.runtimeApi.eui.sys.EXMLConfig();
 			this.runtimeApi.registerTheme((hostComponent) => {
 				return this.getDefaultSkinName(hostComponent);
 			}, (style) => {
 				return this.getStyleConfig(style);
 			});
-			if (refreshRes) {
-				if (this.assetAdapter) {
-					this.assetAdapter.setRuntime(this._runtime);
-				}
+			if (refreshRes && this.assetAdapter) {
+				this.assetAdapter.setRuntime(this._runtime);
 			}
-			if (this.assetAdapter) {
-				this.assetAdapter.ensureLoaded().then(() => {
-					this.projectConfig.ensurePaserCenterInited().then(() => {
-						this.loaded = true;
-						if (this.ensureLoadedPromiseReslove) {
-							this.ensureLoadedPromiseReslove(void 0);
-						}
-						this.ensureLoadedPromise = null;
-						this.ensureLoadedPromiseReslove = null;
-					});
+			const afterAssets = () => {
+				this.projectConfig.ensurePaserCenterInited().then(() => {
+					finishLoaded();
+				}, err => {
+					console.error('ensurePaserCenterInited failed', err);
+					finishLoaded();
 				});
+			};
+			if (this.assetAdapter) {
+				// Design view must still open even if RES config fails
+				this.assetAdapter.ensureLoaded().then(afterAssets, err => {
+					console.warn('Asset adapter load failed; continuing without RES', err);
+					afterAssets();
+				});
+			} else {
+				afterAssets();
 			}
+		}, err => {
+			console.error('Egret runtime getRuntime failed', err);
+			finishLoaded();
 		});
 	}
 

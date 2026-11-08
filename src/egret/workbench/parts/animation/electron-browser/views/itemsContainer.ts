@@ -18,7 +18,8 @@ import { ITweenItem } from 'egret/exts/exml-exts/exml/common/plugin/IAnimationMo
 import { localize } from 'egret/base/localization/nls';
 import { AddTweenItemOperation, RemoveTweenItemOperation, CopyTweenItemOperation, PasteTweenItemOperation, BaseTweenOperation } from '../../common/animationOperations';
 import { IDisposable } from 'egret/base/common/lifecycle';
-import { MenuItemConstructorOptions, MenuItem, remote, Menu } from 'electron';
+import { MenuItemConstructorOptions, MenuItem, Menu } from 'electron';
+import * as remote from '@electron/remote';
 import { IconButton } from 'egret/base/browser/ui/buttons';
 import { SystemCommands } from 'egret/platform/operations/commands/systemCommands';
 

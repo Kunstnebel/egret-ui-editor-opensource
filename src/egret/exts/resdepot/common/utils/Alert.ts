@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 'use strict';
 
-import { remote } from 'electron';
+import * as remote from '@electron/remote';
 import platform = require('vs/base/common/platform');
 import { CloseEvent } from 'egret/exts/resdepot/events/CloseEvent';
 import * as nls from 'egret/base/localization/nls';

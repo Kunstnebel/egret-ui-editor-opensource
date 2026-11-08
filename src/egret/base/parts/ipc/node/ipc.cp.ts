@@ -33,7 +33,19 @@ class IPCClient {
 		this.doSend({ type: 'result', funcName, callIndex, result });
 	}
 	private callError(funcName: string, callIndex: number, error: any): void {
-		this.doSend({ type: 'error', funcName, callIndex, error });
+		// Serialize Error so parent doesn't receive empty {}
+		let payload: any = error;
+		if (error instanceof Error) {
+			payload = {
+				message: error.message,
+				stack: error.stack,
+				name: error.name,
+				code: (error as any).code,
+				path: (error as any).path,
+				errno: (error as any).errno
+			};
+		}
+		this.doSend({ type: 'error', funcName, callIndex, error: payload });
 	}
 	private callNull(funcName: string, callIndex: number): void {
 		this.doSend({ type: 'null', funcName, callIndex });

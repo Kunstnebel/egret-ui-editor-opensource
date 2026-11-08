@@ -3,7 +3,7 @@ import { localize } from 'egret/base/localization/nls';
 import { IExmlModel } from '../../../common/exml/models';
 import { IDesignConfig } from '../../../common/exml/designConfig';
 import { BackgroundType } from '../../../common/exml/designConfigImpl';
-import { remote } from 'electron';
+import * as remote from '@electron/remote';
 import { isMacintosh } from 'egret/base/common/platform';
 import { ColorPicker } from 'egret/base/browser/ui/colorPicker';
 import { NumberInput } from 'egret/base/browser/ui/inputs';

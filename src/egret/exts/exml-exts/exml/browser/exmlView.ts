@@ -8,7 +8,8 @@ import { IValue, INode, IClass, ViewStackIndexChangedEvent, IViewStack, isInstan
 import URI from 'egret/base/common/uri';
 import { IEditorService } from 'egret/editor/core/editors';
 import { EUI } from '../common/project/parsers/core/commons';
-import { Menu, MenuItem, remote, MenuItemConstructorOptions } from 'electron';
+import { Menu, MenuItem, MenuItemConstructorOptions } from 'electron';
+import * as remote from '@electron/remote';
 import { canPasteSize, canPastePos, canPasteRestrict } from '../common/exml/nodeClipboard';
 import { ExmlModelHelper } from '../common/exml/helpers';
 import { ExmlEditor } from './exmleditor/ExmlEditor';

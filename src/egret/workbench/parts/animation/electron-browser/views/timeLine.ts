@@ -17,7 +17,8 @@ import { ITweenItem, ITweenPath } from 'egret/exts/exml-exts/exml/common/plugin/
 import { localize } from 'egret/base/localization/nls';
 import { PlayAndPauseOperation, BaseTweenOperation } from '../../common/animationOperations';
 import { IconButton } from 'egret/base/browser/ui/buttons';
-import { MenuItemConstructorOptions, MenuItem, remote, Menu } from 'electron';
+import { MenuItemConstructorOptions, MenuItem, Menu } from 'electron';
+import * as remote from '@electron/remote';
 import { Emitter, Event } from 'egret/base/common/event';
 
 const TILE_WIDTH = 10;

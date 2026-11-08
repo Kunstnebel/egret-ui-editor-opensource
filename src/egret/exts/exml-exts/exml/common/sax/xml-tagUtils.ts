@@ -318,8 +318,12 @@ export function getNodeAtPosition(node: sax.Tag, position: number): sax.Node {
 		return node;
 	}
 
-	for (var index = 0; index < node.children.length; index++) {
-		const element = node.children[index];
+	const children = node.children || [];
+	for (var index = 0; index < children.length; index++) {
+		const element = children[index];
+		if (!element) {
+			continue;
+		}
 		if (index === 0 && element.start > position) {
 			break;
 		}
@@ -329,9 +333,10 @@ export function getNodeAtPosition(node: sax.Tag, position: number): sax.Node {
 		}
 	}
 
-	for (var index = 0; index < node.attributeNodes.length; index++) {
-		const attr = node.attributeNodes[index];
-		if (attr.start <= position && attr.end >= position) {
+	const attributeNodes = node.attributeNodes || [];
+	for (var index = 0; index < attributeNodes.length; index++) {
+		const attr = attributeNodes[index];
+		if (attr && attr.start <= position && attr.end >= position) {
 			return attr;
 		}
 	}
@@ -564,15 +569,22 @@ export function appendChild(node: sax.Tag, child: sax.Tag, throwError: boolean =
  */
 export function child(node: sax.Tag, localName: string, uri: string = ''): sax.Tag[] {
 	const result: sax.Tag[] = [];
+	if (!node || !node.children) {
+		return result;
+	}
 	for (let i = 0; i < node.children.length; i++) {
-		if (node.children[i].localName === localName) {
+		const current = node.children[i];
+		if (!current) {
+			continue;
+		}
+		if (current.localName === localName) {
 			if (!uri) {
-				if (!node.children[i].namespace) {
-					result.push(node.children[i]);
+				if (!current.namespace) {
+					result.push(current);
 				}
 			} else {
-				if (node.children[i].namespace === uri) {
-					result.push(node.children[i]);
+				if (current.namespace === uri) {
+					result.push(current);
 				}
 			}
 		}
